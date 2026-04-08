@@ -95,6 +95,8 @@ namespace Cloudseed
 
 		void Process(float* inL, float* inR, float* outL, float* outR, int bufSize)
 		{
+			if (bufSize <= 0) return;
+
 			if (outLTemp.size() < bufSize) outLTemp.resize(bufSize, 0.0f);
 			if (outRTemp.size() < bufSize) outRTemp.resize(bufSize, 0.0f);
 			
@@ -118,6 +120,8 @@ namespace Cloudseed
 	private:
 		void ProcessChunk(float* inL, float* inR, float* outL, float* outR, int bufSize)
 		{
+			if (bufSize <= 0) return;
+
 			if (leftChannelIn.size() < bufSize) leftChannelIn.resize(bufSize, 0.0f);
 			if (rightChannelIn.size() < bufSize) rightChannelIn.resize(bufSize, 0.0f);
 			

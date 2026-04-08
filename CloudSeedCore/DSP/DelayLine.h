@@ -61,6 +61,7 @@ namespace Cloudseed
 
 		int PushZeros(float* data, int bufSize)
 		{
+			if (bufSize <= 0) return 0;
 			int countBefore = count;
 			for (int i = 0; i < bufSize; i++)
 			{
@@ -76,6 +77,7 @@ namespace Cloudseed
 
 		int Push(float* data, int bufSize)
 		{
+			if (bufSize <= 0) return 0;
 			int countBefore = count;
 			for (int i = 0; i < bufSize; i++)
 			{
@@ -91,6 +93,7 @@ namespace Cloudseed
 
 		int Pop(float* destination, int bufSize)
 		{
+			if (bufSize <= 0) return 0;
 			int countBefore = count;
 			for (int i = 0; i < bufSize; i++)
 			{
@@ -255,6 +258,8 @@ namespace Cloudseed
 
 		void Process(float* input, float* output, int bufSize)
 		{
+			if (bufSize <= 0) return;
+
 			if (tempBuffer.size() < bufSize) 
 				tempBuffer.resize(bufSize, 0.0f);
 				

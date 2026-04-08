@@ -327,6 +327,8 @@ namespace Cloudseed
 
 		void Process(float* input, float* output, int bufSize)
 		{
+			if (bufSize <= 0) return;
+
 			if (tempBuffer.size() < bufSize) 
 				tempBuffer.resize(bufSize, 0.0f);
 			if (earlyOutBuffer.size() < bufSize) 
