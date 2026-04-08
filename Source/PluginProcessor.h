@@ -1,7 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include "ReverbController.h"
+#include "DSP/ReverbController.h"
 #include "AutomationWatcher.h"
 
 class RISeedIndustrialProcessor  : public juce::AudioProcessor
@@ -21,7 +21,7 @@ public:
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override { return 60.0; } // Max reverb tail
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -39,6 +39,7 @@ private:
     
     juce::dsp::Oversampling<float> oversampler;
     juce::SmoothedValue<float> smoothedCrunch;
+    std::vector<float> crunchScratch; // Pre-allocated per-sample crunch values (no audio-thread alloc)
     
     AutomationWatcher automationWatcher;
 

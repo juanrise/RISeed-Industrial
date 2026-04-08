@@ -34,22 +34,25 @@ void RISeedIndustrialProcessor::prepareToPlay(double sampleRate, int samplesPerB
     reverb->ClearBuffers();
 
     smoothedCrunch.reset(sampleRate, 0.05);
+    crunchScratch.resize(samplesPerBlock + 64, 0.0f); // +64 margin for varying block sizes
     
     // Set 4x processing (factor 2 => 2^2 = 4x)
     oversampler.initProcessing(samplesPerBlock);
 
     // Initialize all basic CloudSeed parameters to a default "Industrial" state
-    reverb->SetParameter(Cloudseed::Parameter::DryOut, -100.0); // We do our own mixing!
-    reverb->SetParameter(Cloudseed::Parameter::EarlyOut, 0.0);
-    reverb->SetParameter(Cloudseed::Parameter::LateOut, 0.0); // We'll set this dynamically
+    reverb->SetParameter(Cloudseed::Parameter::DryOut,       -100.0); // We do our own mixing!
+    reverb->SetParameter(Cloudseed::Parameter::EarlyOut,     0.0);
+    reverb->SetParameter(Cloudseed::Parameter::LateOut,      0.0);    // We'll set this dynamically
     reverb->SetParameter(Cloudseed::Parameter::LateLineCount, 12.0);
+    // Set a safe non-zero decay default so UpdateLines() never divides by zero
+    reverb->SetParameter(Cloudseed::Parameter::LateLineDecay, 2.0);
     
-    // We will start FileWatcher and other singletons elsewhere if needed
     automationWatcher.startWatching(&apvts);
 }
 
 void RISeedIndustrialProcessor::releaseResources()
 {
+    automationWatcher.stopWatching(); // Stop background thread before DSP teardown
     oversampler.reset();
 }
 
@@ -63,17 +66,22 @@ void RISeedIndustrialProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
         buffer.clear(i, 0, buffer.getNumSamples());
 
     // Update Params
-    float mix = apvts.getRawParameterValue("Mix")->load();
-    float decay = apvts.getRawParameterValue("Decay")->load();
+    float mix    = apvts.getRawParameterValue("Mix")->load();
+    float decay  = apvts.getRawParameterValue("Decay")->load();
     float targetCrunch = apvts.getRawParameterValue("Crunch")->load();
     
     smoothedCrunch.setTargetValue(targetCrunch);
     
     reverb->SetParameter(Cloudseed::Parameter::LateLineDecay, decay);
-    // Let's ensure out is strictly 0dB FS
-    reverb->SetParameter(Cloudseed::Parameter::LateOut, 0.0); 
+    reverb->SetParameter(Cloudseed::Parameter::LateOut, 0.0);
 
     int numSamples = buffer.getNumSamples();
+    
+    // Pre-compute one smoothed crunch value per original sample (not per oversampled sample)
+    if ((int)crunchScratch.size() < numSamples)
+        crunchScratch.resize(numSamples + 64, 0.0f);
+    for (int i = 0; i < numSamples; ++i)
+        crunchScratch[i] = smoothedCrunch.getNextValue();
     
     juce::AudioBuffer<float> dryBuffer;
     dryBuffer.makeCopyOf(buffer, true); // backup dry
@@ -87,21 +95,26 @@ void RISeedIndustrialProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     else
         reverb->Process(channelDataL, channelDataL, channelDataL, channelDataL, numSamples); // Mono
 
-    // 2) Saturate wet only
+    // 2) Saturate wet only — using oversampled block
     juce::dsp::AudioBlock<float> wetBlock(buffer);
     juce::dsp::AudioBlock<float> osBlock = oversampler.processSamplesUp(wetBlock);
+
+    int overFactor = (int)osBlock.getNumSamples() / numSamples;
+    if (overFactor < 1) overFactor = 1; // safety
 
     for (size_t ch = 0; ch < osBlock.getNumChannels(); ++ch)
     {
         float* data = osBlock.getChannelPointer(ch);
-        for (int i = 0; i < (int)osBlock.getNumSamples(); ++i)
+        for (int i = 0; i < numSamples; ++i)
         {
-            float crunch = smoothedCrunch.getNextValue();
-            
-            // Crunch
-            data[i] = std::tanh(crunch * data[i]);
-            // Normalize back to prevent large volume jumps
-            data[i] *= (1.0f / std::sqrt(std::max(1.0f, crunch))); 
+            // Advance smoother once per original sample, apply to all oversampled frames
+            float crunch = crunchScratch[i];
+            float norm   = 1.0f / std::sqrt(std::max(1.0f, crunch));
+            for (int k = 0; k < overFactor; ++k)
+            {
+                int idx = i * overFactor + k;
+                data[idx] = std::tanh(crunch * data[idx]) * norm;
+            }
         }
     }
     
@@ -111,12 +124,10 @@ void RISeedIndustrialProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto* writePtr = buffer.getWritePointer(channel);
-        auto* dryPtr = dryBuffer.getReadPointer(channel);
+        auto* dryPtr   = dryBuffer.getReadPointer(channel);
         
         for (int i = 0; i < numSamples; ++i)
-        {
             writePtr[i] = (dryPtr[i] * (1.0f - mix)) + (writePtr[i] * mix);
-        }
     }
 }
 

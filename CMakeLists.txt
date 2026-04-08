@@ -11,10 +11,10 @@ juce_add_plugin(RISeed-Industrial
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    COPY_PLUGIN_AFTER_BUILD TRUE
+    COPY_PLUGIN_AFTER_BUILD FALSE
     PLUGIN_MANUFACTURER_CODE "Risi"
     PLUGIN_CODE "Rsdi"
-    FORMATS VST3 AU
+    FORMATS VST3
     PRODUCT_NAME "RISeed-Industrial")
 
 # Force output directories as requested for CI

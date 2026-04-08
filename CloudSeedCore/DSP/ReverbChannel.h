@@ -405,27 +405,30 @@ namespace Cloudseed
 		void UpdateLines()
 		{
 			auto lineDelaySamples = (int)Ms2Samples(paramsScaled[Parameter::LateLineSize]);
-			auto lineDecayMillis = paramsScaled[Parameter::LateLineDecay] * 1000;
+			auto lineDecayMillis  = paramsScaled[Parameter::LateLineDecay] * 1000;
 			auto lineDecaySamples = Ms2Samples(lineDecayMillis);
 
+			// Guard: zero decay would cause division by zero in the dB calculation below.
+			if (lineDecaySamples < 1.0f) lineDecaySamples = 1.0f;
+
 			auto lineModAmount = Ms2Samples(paramsScaled[Parameter::LateLineModAmount]);
-			auto lineModRate = paramsScaled[Parameter::LateLineModRate];
+			auto lineModRate   = paramsScaled[Parameter::LateLineModRate];
 
 			auto lateDiffusionModAmount = Ms2Samples(paramsScaled[Parameter::LateDiffuseModAmount]);
-			auto lateDiffusionModRate = paramsScaled[Parameter::LateDiffuseModRate];
+			auto lateDiffusionModRate   = paramsScaled[Parameter::LateDiffuseModRate];
 
 			auto delayLineSeeds = RandomBuffer::Generate(delayLineSeed, TotalLineCount * 3, crossSeed);
 
 			for (int i = 0; i < TotalLineCount; i++)
 			{
 				auto modAmount = lineModAmount * (0.7 + 0.3 * delayLineSeeds[i]);
-				auto modRate = lineModRate * (0.7 + 0.3 * delayLineSeeds[TotalLineCount + i]) / samplerate;
+				auto modRate   = lineModRate * (0.7 + 0.3 * delayLineSeeds[TotalLineCount + i]) / samplerate;
 
 				auto delaySamples = (0.5 + 1.0 * delayLineSeeds[TotalLineCount * 2 + i]) * lineDelaySamples;
-				if (delaySamples < modAmount + 2) // when the delay is set really short, and the modulation is very high
-					delaySamples = modAmount + 2; // the mod could actually take the delay time negative, prevent that! -- provide 2 extra sample as margin of safety
+				if (delaySamples < modAmount + 2) // prevent negative delay from large modulation
+					delaySamples = modAmount + 2;
 
-				auto dbAfter1Iteration = delaySamples / lineDecaySamples * (-60); // lineDecay is the time it takes to reach T60
+				auto dbAfter1Iteration  = delaySamples / lineDecaySamples * (-60); // T60 calc
 				auto gainAfter1Iteration = Utils::DB2Gainf(dbAfter1Iteration);
 
 				lines[i].SetDelay((int)delaySamples);

@@ -5,11 +5,11 @@ RISeedIndustrialEditor::RISeedIndustrialEditor (RISeedIndustrialProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
     setSize (800, 450);
-    juce::LookAndFeel::setDefaultLookAndFeel(&customLookAndFeel);
-
+    // Set L&F per-slider instead of globally (global would affect ALL plugins in the DAW host)
     auto setupSlider = [this](juce::Slider& s, const juce::String& name) {
         s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         s.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 20);
+        s.setLookAndFeel(&customLookAndFeel);
         addAndMakeVisible(s);
     };
 
@@ -54,7 +54,10 @@ RISeedIndustrialEditor::RISeedIndustrialEditor (RISeedIndustrialProcessor& p)
 
 RISeedIndustrialEditor::~RISeedIndustrialEditor()
 {
-    juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
+    // Reset per-slider L&F before destruction to avoid dangling pointer
+    mixSlider.setLookAndFeel(nullptr);
+    decaySlider.setLookAndFeel(nullptr);
+    crunchSlider.setLookAndFeel(nullptr);
 }
 
 void RISeedIndustrialEditor::paint (juce::Graphics& g)
@@ -69,18 +72,16 @@ void RISeedIndustrialEditor::paint (juce::Graphics& g)
     g.drawText("DECAY", 350, 30, 100, 20, juce::Justification::centred);
     g.drawText("CRUNCH", 600, 30, 100, 20, juce::Justification::centred);
 
-    // Draw Preset Matrix Boundary
+    // --- Draw Preset Matrix ---
     g.setColour(juce::Colour(0xff1a1a1a));
     g.fillRoundedRectangle(40, 220, 720, 200, 10.0f);
     g.setColour(juce::Colour(0xff32cd32));
     g.drawRoundedRectangle(40, 220, 720, 200, 10.0f, 1.0f);
-    
-    clickZones.clear();
 
-    int startX = 60;
-    int startY = 240;
-    int colWidth = 130;
-    int rowHeight = 40;
+    const int startX    = 60;
+    const int startY    = 240;
+    const int colWidth  = 130;
+    const int rowHeight = 40;
 
     for (size_t col = 0; col < presetMatrix.size(); ++col)
     {
@@ -91,33 +92,41 @@ void RISeedIndustrialEditor::paint (juce::Graphics& g)
         g.setFont(13.0f);
         for (size_t row = 0; row < presetMatrix[col].presets.size(); ++row)
         {
-            auto rect = juce::Rectangle<int>(startX + col * colWidth, startY + 30 + row * rowHeight, colWidth - 10, 30);
-            
+            auto rect = juce::Rectangle<int>(startX + (int)col * colWidth, startY + 30 + (int)row * rowHeight, colWidth - 10, 30);
             g.setColour(juce::Colour(0xff1f1f1f));
             g.fillRect(rect);
             g.setColour(juce::Colours::white);
             g.drawText(presetMatrix[col].presets[row].name, rect, juce::Justification::centred);
-
-            // Register click zone
-            clickZones.push_back({rect, [this, col, row](const juce::MouseEvent& e) {
-                if (e.mods.isRightButtonDown() && col == 4) // User col
-                {
-                    saveUserPreset((int)row);
-                }
-                else if (e.mods.isLeftButtonDown())
-                {
-                    loadPreset(presetMatrix[col].presets[row]);
-                }
-            }});
         }
     }
 }
 
 void RISeedIndustrialEditor::resized()
 {
-    mixSlider.setBounds (100, 60, 100, 120);
+    mixSlider.setBounds   (100, 60, 100, 120);
     decaySlider.setBounds (350, 60, 100, 120);
-    crunchSlider.setBounds (600, 60, 100, 120);
+    crunchSlider.setBounds(600, 60, 100, 120);
+
+    // Build click zones here (not in paint) to avoid per-frame heap allocation
+    clickZones.clear();
+    const int startX    = 60;
+    const int startY    = 240;
+    const int colWidth  = 130;
+    const int rowHeight = 40;
+
+    for (size_t col = 0; col < presetMatrix.size(); ++col)
+    {
+        for (size_t row = 0; row < presetMatrix[col].presets.size(); ++row)
+        {
+            auto rect = juce::Rectangle<int>(startX + (int)col * colWidth, startY + 30 + (int)row * rowHeight, colWidth - 10, 30);
+            clickZones.push_back({rect, [this, col, row](const juce::MouseEvent& e) {
+                if (e.mods.isRightButtonDown() && col == 4)
+                    saveUserPreset((int)row);
+                else if (e.mods.isLeftButtonDown())
+                    loadPreset(presetMatrix[col].presets[row]);
+            }});
+        }
+    }
 }
 
 void RISeedIndustrialEditor::mouseDown(const juce::MouseEvent& e)

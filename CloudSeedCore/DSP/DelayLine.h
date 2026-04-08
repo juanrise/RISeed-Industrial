@@ -272,8 +272,6 @@ namespace Cloudseed
 
 			delay.Process(tBuf, tBuf, bufSize);
 			
-			if (!TapPostDiffuser)
-				Utils::Copy(output, tBuf, bufSize);
 			if (DiffuserEnabled)
 				diffuser.Process(tBuf, tBuf, bufSize);
 			if (LowShelfEnabled)
@@ -317,13 +315,13 @@ namespace Cloudseed
 				float y1 = interpolate(readIdx1);
 				float y2 = interpolate(readIdx2);
 
-				// Crossfade window: triangle or cos
+				// Crossfade window: triangle
 				float crossfade = pitchPhase / windowSize; 
 				float fade1 = crossfade * 2.0f;
-				if (fade1 > 1.0f) fade1 = 2.0f - fade1; // Triangle wave 0 to 1 back to 0
+				if (fade1 > 1.0f) fade1 = 2.0f - fade1;
 				
 				float fade2 = fmod(crossfade + 0.5f, 1.0f) * 2.0f;
-				if (fade2 > 1.0f) fade2 = 2.0f - fade2; // 180 deg out of phase
+				if (fade2 > 1.0f) fade2 = 2.0f - fade2;
 
 				float shifted = y1 * fade1 + y2 * fade2;
 				
@@ -337,8 +335,9 @@ namespace Cloudseed
 
 			feedbackBuffer.Push(tBuf, bufSize);
 
-			if (TapPostDiffuser)
-				Utils::Copy(output, tBuf, bufSize);
+			// Always output after all processing so both tap modes hear the full signal
+			// (previously !TapPostDiffuser copied before shimmer, causing feedback divergence)
+			Utils::Copy(output, tBuf, bufSize);
 		}
 
 		void ClearDiffuserBuffer()

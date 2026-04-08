@@ -1,4 +1,5 @@
-name: Build Plugins
+name: Build VST3 Plugin
+
 on:
   push:
     branches:
@@ -9,15 +10,18 @@ permissions:
   contents: write
 
 jobs:
+  # ──────────────────────────────────────────────
+  #  Windows — VST3 only
+  # ──────────────────────────────────────────────
   build-windows:
-    name: Build Windows
+    name: Build Windows VST3
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Cache JUCE and Build
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             JUCE
@@ -34,21 +38,24 @@ jobs:
       - name: Build VST3
         run: cmake --build build --config Release
 
-      - name: Upload Artifact
+      - name: Upload Windows VST3
         uses: actions/upload-artifact@v4
         with:
-          name: RISeed-Industrial-Windows
-          path: build/RISeed-Industrial_artefacts/
+          name: RISeed-Industrial-Windows-VST3
+          path: build/RISeed-Industrial_artefacts/VST3/
 
+  # ──────────────────────────────────────────────
+  #  macOS — VST3 Universal Binary only
+  # ──────────────────────────────────────────────
   build-macos:
-    name: Build macOS
+    name: Build macOS VST3 (Universal)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Cache JUCE and Build
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             JUCE
@@ -59,54 +66,91 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: git clone --branch 8.0.0 --depth 1 https://github.com/juce-framework/JUCE.git JUCE
 
-      - name: Configure CMake
+      - name: Configure CMake (Universal Binary)
         run: cmake -B build -S . -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
 
-      - name: Build VST3 and AU
+      - name: Build VST3
         run: cmake --build build --config Release
 
-      - name: Upload Artifact
+      - name: Upload macOS VST3
         uses: actions/upload-artifact@v4
         with:
-          name: RISeed-Industrial-macOS
-          path: build/RISeed-Industrial_artefacts/
+          name: RISeed-Industrial-macOS-VST3
+          path: build/RISeed-Industrial_artefacts/VST3/
 
+  # ──────────────────────────────────────────────
+  #  Release — runs only on main, after both builds succeed
+  # ──────────────────────────────────────────────
   release:
-    name: Create Release
+    name: Publish Release
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed to force-push the tag
 
-      - name: Download Windows Artifact
+      - name: Move release tag to latest commit
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -f v1.0.0-beta
+          git push -f origin v1.0.0-beta
+
+      - name: Download Windows VST3
         uses: actions/download-artifact@v4
         with:
-          name: RISeed-Industrial-Windows
+          name: RISeed-Industrial-Windows-VST3
           path: artefacts/windows
 
-      - name: Download macOS Artifact
+      - name: Download macOS VST3
         uses: actions/download-artifact@v4
         with:
-          name: RISeed-Industrial-macOS
+          name: RISeed-Industrial-macOS-VST3
           path: artefacts/macos
-          
-      - name: Create Scripts and ZIP
+
+      - name: Create ZIPs
         run: |
-          echo "xattr -rd com.apple.quarantine *.vst3 *.component" > artefacts/macos/dequarantine.sh
-          chmod +x artefacts/macos/dequarantine.sh
-          echo 'Copy-Item *.vst3 "$env:COMMONPROGRAMFILES\VST3" -Recurse' > artefacts/windows/install_vst3.ps1
-          
-          cd artefacts/windows
-          zip -r ../../RISeed-Industrial_Windows.zip .
-          cd ../macos
-          zip -r ../../RISeed-Industrial_macOS.zip .
-          cd ../..
-          
-      - name: Release
+          # macOS: add a one-step install helper script
+          cat > artefacts/macos/INSTALL_MAC.sh << 'EOF'
+          #!/bin/bash
+          echo "Removing macOS quarantine from plugin..."
+          xattr -rd com.apple.quarantine RISeed-Industrial.vst3
+          echo "Copying to /Library/Audio/Plug-Ins/VST3/ ..."
+          sudo cp -R RISeed-Industrial.vst3 /Library/Audio/Plug-Ins/VST3/
+          echo "Done! Restart Ableton and rescan plugins."
+          EOF
+          chmod +x artefacts/macos/INSTALL_MAC.sh
+
+          # Windows: add a one-step install helper script
+          cat > artefacts/windows/INSTALL_WINDOWS.ps1 << 'EOF'
+          Write-Host "Copying VST3 to system plugin folder..."
+          Copy-Item "RISeed-Industrial.vst3" "$env:COMMONPROGRAMFILES\VST3" -Recurse -Force
+          Write-Host "Done! Restart your DAW and rescan plugins."
+          EOF
+
+          cd artefacts/windows && zip -r ../../RISeed-Industrial_Windows.zip . && cd ../..
+          cd artefacts/macos  && zip -r ../../RISeed-Industrial_macOS.zip  . && cd ../..
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v1.0.0-beta
+          name: "RISeed-Industrial v1.0.0-beta (Latest)"
+          prerelease: false
+          body: |
+            ## RISeed-Industrial VST3
+
+            ### macOS
+            1. Unzip `RISeed-Industrial_macOS.zip`
+            2. Run `INSTALL_MAC.sh` in Terminal (or manually copy `.vst3` to `/Library/Audio/Plug-Ins/VST3/`)
+            3. Restart Ableton and rescan plugins
+
+            ### Windows
+            1. Unzip `RISeed-Industrial_Windows.zip`
+            2. Run `INSTALL_WINDOWS.ps1` as Administrator (or manually copy `.vst3` to `C:\Program Files\Common Files\VST3\`)
+            3. Restart your DAW and rescan plugins
           files: |
             RISeed-Industrial_Windows.zip
             RISeed-Industrial_macOS.zip
