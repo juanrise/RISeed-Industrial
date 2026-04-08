@@ -45,7 +45,7 @@ void RISeedIndustrialProcessor::prepareToPlay(double sampleRate, int samplesPerB
     reverb->SetParameter(Cloudseed::Parameter::LateLineCount, 12.0);
     
     // We will start FileWatcher and other singletons elsewhere if needed
-    AutomationWatcher::getInstance()->startWatching(&apvts);
+    automationWatcher.startWatching(&apvts);
 }
 
 void RISeedIndustrialProcessor::releaseResources()

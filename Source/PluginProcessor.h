@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "ReverbController.h"
+#include "AutomationWatcher.h"
 
 class RISeedIndustrialProcessor  : public juce::AudioProcessor
 {
@@ -39,6 +40,8 @@ private:
     juce::dsp::Oversampling<float> oversampler;
     juce::SmoothedValue<float> smoothedCrunch;
     
+    AutomationWatcher automationWatcher;
+
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RISeedIndustrialProcessor)

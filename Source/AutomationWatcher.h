@@ -5,11 +5,8 @@
 class AutomationWatcher : public juce::Thread
 {
 public:
-    static AutomationWatcher* getInstance()
-    {
-        static AutomationWatcher instance;
-        return &instance;
-    }
+    AutomationWatcher() : juce::Thread("AutomationWatcher") {}
+    ~AutomationWatcher() override { stopWatching(); }
 
     void startWatching(juce::AudioProcessorValueTreeState* newApvts)
     {
@@ -46,9 +43,6 @@ public:
     }
 
 private:
-    AutomationWatcher() : juce::Thread("AutomationWatcher") {}
-    ~AutomationWatcher() override { stopWatching(); }
-
     void parseAndApplyJson()
     {
         if (!apvts) return;
@@ -57,17 +51,27 @@ private:
         if (jsonParseResult.isObject())
         {
             auto* obj = jsonParseResult.getDynamicObject();
-            if (obj->hasProperty("Mix")) 
-                if (auto* p = apvts->getParameter("Mix")) 
-                    p->setValueNotifyingHost(p->convertTo0to1(static_cast<float>(obj->getProperty("Mix"))));
             
-            if (obj->hasProperty("Decay")) 
-                if (auto* p = apvts->getParameter("Decay")) 
-                    p->setValueNotifyingHost(p->convertTo0to1(static_cast<float>(obj->getProperty("Decay"))));
+            float mixVal = obj->hasProperty("Mix") ? static_cast<float>(obj->getProperty("Mix")) : -1.0f;
+            float decayVal = obj->hasProperty("Decay") ? static_cast<float>(obj->getProperty("Decay")) : -1.0f;
+            float crunchVal = obj->hasProperty("Crunch") ? static_cast<float>(obj->getProperty("Crunch")) : -1.0f;
 
-            if (obj->hasProperty("Crunch")) 
-                if (auto* p = apvts->getParameter("Crunch")) 
-                    p->setValueNotifyingHost(p->convertTo0to1(static_cast<float>(obj->getProperty("Crunch"))));
+            juce::MessageManager::callAsync([this, mixVal, decayVal, crunchVal]()
+            {
+                if (!apvts) return;
+                
+                if (mixVal >= 0.0f)
+                    if (auto* p = apvts->getParameter("Mix"))
+                        p->setValueNotifyingHost(p->convertTo0to1(mixVal));
+                
+                if (decayVal >= 0.0f)
+                    if (auto* p = apvts->getParameter("Decay"))
+                        p->setValueNotifyingHost(p->convertTo0to1(decayVal));
+                
+                if (crunchVal >= 0.0f)
+                    if (auto* p = apvts->getParameter("Crunch"))
+                        p->setValueNotifyingHost(p->convertTo0to1(crunchVal));
+            });
         }
     }
 
