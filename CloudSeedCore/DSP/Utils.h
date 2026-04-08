@@ -25,6 +25,11 @@ THE SOFTWARE.
 #define _USE_MATH_DEFINES 1
 #include <math.h>
 #include <stdint.h>
+#include <cstring>
+
+#ifndef BUFFER_SIZE
+#define BUFFER_SIZE 4096
+#endif
 
 namespace Cloudseed
 {

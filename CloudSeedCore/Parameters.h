@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include <string.h>
 #include "DSP/Utils.h"
 
+#define MAX_STR_SIZE 256
+
 namespace Cloudseed
 {
     namespace Parameter
@@ -192,9 +194,9 @@ namespace Cloudseed
         case Parameter::EqLowpassEnabled:
         case Parameter::EarlyDiffuseEnabled:
             if (ScaleParam(val, paramId) == 1)
-                strcpy_s(buffer, MAX_STR_SIZE, "ENABLED");
+                snprintf(buffer, MAX_STR_SIZE, "%s", "ENABLED");
             else
-                strcpy_s(buffer, MAX_STR_SIZE, "DISABLED");
+                snprintf(buffer, MAX_STR_SIZE, "%s", "DISABLED");
             break;
 
         case Parameter::InputMix:
@@ -224,7 +226,7 @@ namespace Cloudseed
         case Parameter::EarlyOut:
         case Parameter::LateOut:
             if (s <= -30)
-                strcpy_s(buffer, MAX_STR_SIZE, "MUTED");
+                snprintf(buffer, MAX_STR_SIZE, "%s", "MUTED");
             else
                 snprintf(buffer, MAX_STR_SIZE, "%.1f dB", s);
             break;
@@ -255,9 +257,9 @@ namespace Cloudseed
 
         case Parameter::LateMode:
             if (s == 1)
-                strcpy_s(buffer, MAX_STR_SIZE, "POST");
+                snprintf(buffer, MAX_STR_SIZE, "%s", "POST");
             else
-                strcpy_s(buffer, MAX_STR_SIZE, "PRE");
+                snprintf(buffer, MAX_STR_SIZE, "%s", "PRE");
             break;
 
         case Parameter::EarlyDiffuseModAmount:
