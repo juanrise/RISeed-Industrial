@@ -40,6 +40,7 @@ namespace Cloudseed
 		int delay;
 		float modRate;
 		std::vector<float> seedValues;
+		std::vector<float> tempBuffer;
 		int seed;
 		float crossSeed;
 
@@ -52,6 +53,7 @@ namespace Cloudseed
 			seed = 23456;
 			UpdateSeeds();
 			Stages = 1;
+			tempBuffer.resize(8192, 0.0f); // Preallocate common max chunk sizes
 
 			SetSamplerate(48000);
 		}
@@ -126,14 +128,17 @@ namespace Cloudseed
 
 		void Process(float* input, float* output, int bufSize)
 		{
-			float tempBuffer[BUFFER_SIZE];
+			if (tempBuffer.size() < bufSize) 
+				tempBuffer.resize(bufSize, 0.0f);
+				
+			float* tBuf = tempBuffer.data();
 
-			filters[0].Process(input, tempBuffer, bufSize);
+			filters[0].Process(input, tBuf, bufSize);
 
 			for (int i = 1; i < Stages; i++)
-				filters[i].Process(tempBuffer, tempBuffer, bufSize);
+				filters[i].Process(tBuf, tBuf, bufSize);
 			
-			Utils::Copy(output, tempBuffer, bufSize);
+			Utils::Copy(output, tBuf, bufSize);
 		}
 
 		void ClearBuffers()

@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
+#include <vector>
 #include "Lp1.h"
 #include "ModulatedDelay.h"
 #include "AllpassDiffuser.h"
@@ -29,16 +30,18 @@ THE SOFTWARE.
 
 namespace Cloudseed
 {
-	template<unsigned int N>
 	class CircularBuffer
 	{
-		float buffer[N];
+		std::vector<float> buffer;
 		int idxRead;
 		int idxWrite;
 		int count;
+		int N;
 	public:
-		CircularBuffer()
+		CircularBuffer(int capacity = 192000)
 		{
+			N = capacity;
+			buffer.resize(N, 0.0f);
 			Reset();
 		}
 
@@ -105,7 +108,6 @@ namespace Cloudseed
 
 			return countBefore - count;
 		}
-
 	};
 
 	class DelayLine
@@ -116,12 +118,13 @@ namespace Cloudseed
 		Biquad lowShelf;
 		Biquad highShelf;
 		Lp1 lowPass;
-		CircularBuffer<2*BUFFER_SIZE> feedbackBuffer;
+		CircularBuffer feedbackBuffer;
 		float feedback;
 
 		// Shimmer components
 		static const int PITCH_BUF_SIZE = 8192;
-		float pitchBuffer[PITCH_BUF_SIZE];
+		std::vector<float> pitchBuffer;
+		std::vector<float> tempBuffer;
 		int pitchWriteIdx = 0;
 		float pitchPhase = 0.0f;
 		float windowSize = 4096.0f; // Crossfade window
@@ -134,12 +137,14 @@ namespace Cloudseed
 		bool TapPostDiffuser;
 
 		DelayLine() :
+			feedbackBuffer(192000), // Default large allocation
 			lowShelf(Biquad::FilterType::LowShelf, 48000),
 			highShelf(Biquad::FilterType::HighShelf, 48000)
 		{
 			feedback = 0;
 
-			for (int i = 0; i < PITCH_BUF_SIZE; ++i) pitchBuffer[i] = 0.0f;
+			pitchBuffer.resize(PITCH_BUF_SIZE, 0.0f);
+			tempBuffer.resize(8192, 0.0f); // Pre-allocate larger than maximum expected bufSize
 
 			lowShelf.SetGainDb(-20);
 			lowShelf.Frequency = 20;
@@ -250,24 +255,28 @@ namespace Cloudseed
 
 		void Process(float* input, float* output, int bufSize)
 		{
-			float tempBuffer[BUFFER_SIZE];
-			feedbackBuffer.Pop(tempBuffer, bufSize);
+			if (tempBuffer.size() < bufSize) 
+				tempBuffer.resize(bufSize, 0.0f);
+				
+			float* tBuf = tempBuffer.data();
+			
+			feedbackBuffer.Pop(tBuf, bufSize);
 
 			for (int i = 0; i < bufSize; i++)
-				tempBuffer[i] = input[i] + tempBuffer[i] * feedback;
+				tBuf[i] = input[i] + tBuf[i] * feedback;
 
-			delay.Process(tempBuffer, tempBuffer, bufSize);
+			delay.Process(tBuf, tBuf, bufSize);
 			
 			if (!TapPostDiffuser)
-				Utils::Copy(output, tempBuffer, bufSize);
+				Utils::Copy(output, tBuf, bufSize);
 			if (DiffuserEnabled)
-				diffuser.Process(tempBuffer, tempBuffer, bufSize);
+				diffuser.Process(tBuf, tBuf, bufSize);
 			if (LowShelfEnabled)
-				lowShelf.Process(tempBuffer, tempBuffer, bufSize);
+				lowShelf.Process(tBuf, tBuf, bufSize);
 			if (HighShelfEnabled)
-				highShelf.Process(tempBuffer, tempBuffer, bufSize);
+				highShelf.Process(tBuf, tBuf, bufSize);
 			if (CutoffEnabled)
-				lowPass.Process(tempBuffer, tempBuffer, bufSize);
+				lowPass.Process(tBuf, tBuf, bufSize);
 
 			// --- Shimmer (+12st) and Hard Limit ---
 			const float limitThreshold = 0.94406087f; // -0.5 dBFS roughly
@@ -275,7 +284,7 @@ namespace Cloudseed
 
 			for (int i = 0; i < bufSize; ++i)
 			{
-				float x = tempBuffer[i];
+				float x = tBuf[i];
 
 				// Write to pitch buffer
 				pitchBuffer[pitchWriteIdx] = x;
@@ -317,14 +326,14 @@ namespace Cloudseed
 				if (shifted > limitThreshold) shifted = limitThreshold;
 				else if (shifted < -limitThreshold) shifted = -limitThreshold;
 
-				tempBuffer[i] = shifted;
+				tBuf[i] = shifted;
 			}
 			// --------------------------------------
 
-			feedbackBuffer.Push(tempBuffer, bufSize);
+			feedbackBuffer.Push(tBuf, bufSize);
 
 			if (TapPostDiffuser)
-				Utils::Copy(output, tempBuffer, bufSize);
+				Utils::Copy(output, tBuf, bufSize);
 		}
 
 		void ClearDiffuserBuffer()

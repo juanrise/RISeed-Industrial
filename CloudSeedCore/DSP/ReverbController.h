@@ -40,12 +40,21 @@ namespace Cloudseed
 		ReverbChannel channelR;
 		double parameters[(int)Parameter::COUNT] = {0};
 
+		std::vector<float> outLTemp;
+		std::vector<float> outRTemp;
+		std::vector<float> leftChannelIn;
+		std::vector<float> rightChannelIn;
+
 	public:
 		ReverbController(int samplerate) :
 			channelL(samplerate, ChannelLR::Left),
 			channelR(samplerate, ChannelLR::Right)
 		{
 			this->samplerate = samplerate;
+			outLTemp.resize(8192, 0.0f);
+			outRTemp.resize(8192, 0.0f);
+			leftChannelIn.resize(8192, 0.0f);
+			rightChannelIn.resize(8192, 0.0f);
 		}
 
 		int GetSamplerate()
@@ -86,15 +95,18 @@ namespace Cloudseed
 
 		void Process(float* inL, float* inR, float* outL, float* outR, int bufSize)
 		{
-			float outLTemp[BUFFER_SIZE];
-			float outRTemp[BUFFER_SIZE];
+			if (outLTemp.size() < bufSize) outLTemp.resize(bufSize, 0.0f);
+			if (outRTemp.size() < bufSize) outRTemp.resize(bufSize, 0.0f);
+			
+			float* lT = outLTemp.data();
+			float* rT = outRTemp.data();
 
 			while (bufSize > 0)
 			{
 				int subBufSize = bufSize > BUFFER_SIZE ? BUFFER_SIZE : bufSize;
-				ProcessChunk(inL, inR, outLTemp, outRTemp, subBufSize);
-				Utils::Copy(outL, outLTemp, subBufSize);
-				Utils::Copy(outR, outRTemp, subBufSize);
+				ProcessChunk(inL, inR, lT, rT, subBufSize);
+				Utils::Copy(outL, lT, subBufSize);
+				Utils::Copy(outR, rT, subBufSize);
 				inL = &inL[subBufSize];
 				inR = &inR[subBufSize];
 				outL = &outL[subBufSize];
@@ -106,8 +118,11 @@ namespace Cloudseed
 	private:
 		void ProcessChunk(float* inL, float* inR, float* outL, float* outR, int bufSize)
 		{
-			float leftChannelIn[BUFFER_SIZE];
-			float rightChannelIn[BUFFER_SIZE];
+			if (leftChannelIn.size() < bufSize) leftChannelIn.resize(bufSize, 0.0f);
+			if (rightChannelIn.size() < bufSize) rightChannelIn.resize(bufSize, 0.0f);
+			
+			float* lIn = leftChannelIn.data();
+			float* rIn = rightChannelIn.data();
 
 			float inputMix = ScaleParam(parameters[Parameter::InputMix], Parameter::InputMix);
 			float cm = inputMix * 0.5;
@@ -115,12 +130,12 @@ namespace Cloudseed
 
 			for (int i = 0; i < bufSize; i++)
 			{
-				leftChannelIn[i] = inL[i] * cmi + inR[i] * cm;
-				rightChannelIn[i] = inR[i] * cmi + inL[i] * cm;
+				lIn[i] = inL[i] * cmi + inR[i] * cm;
+				rIn[i] = inR[i] * cmi + inL[i] * cm;
 			}
 
-			channelL.Process(leftChannelIn, outL, bufSize);
-			channelR.Process(rightChannelIn, outR, bufSize);
+			channelL.Process(lIn, outL, bufSize);
+			channelR.Process(rIn, outR, bufSize);
 		}
 	};
 }

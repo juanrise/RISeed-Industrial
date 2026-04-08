@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
+#include <vector>
 #include <map>
 #include <memory>
 #include "../Parameters.h"
@@ -77,6 +78,12 @@ namespace Cloudseed
 		float crossSeed;
 		ChannelLR channelLr;
 
+		// Process buffers
+		std::vector<float> tempBuffer;
+		std::vector<float> earlyOutBuffer;
+		std::vector<float> lineOutBuffer;
+		std::vector<float> lineSumBuffer;
+
 	public:
 
 		ReverbChannel(int samplerate, ChannelLR leftOrRight)
@@ -84,6 +91,12 @@ namespace Cloudseed
 			this->channelLr = leftOrRight;
 			crossSeed = 0.0;
 			lineCount = 8;
+			
+			tempBuffer.resize(8192, 0.0f);
+			earlyOutBuffer.resize(8192, 0.0f);
+			lineOutBuffer.resize(8192, 0.0f);
+			lineSumBuffer.resize(8192, 0.0f);
+			
 			diffuser.SetInterpolationEnabled(true);
 			highPass.SetCutoffHz(20);
 			lowPass.SetCutoffHz(20000);
@@ -314,49 +327,58 @@ namespace Cloudseed
 
 		void Process(float* input, float* output, int bufSize)
 		{
-			float tempBuffer[BUFFER_SIZE];
-			float earlyOutBuffer[BUFFER_SIZE];
-			float lineOutBuffer[BUFFER_SIZE];
-			float lineSumBuffer[BUFFER_SIZE];
+			if (tempBuffer.size() < bufSize) 
+				tempBuffer.resize(bufSize, 0.0f);
+			if (earlyOutBuffer.size() < bufSize) 
+				earlyOutBuffer.resize(bufSize, 0.0f);
+			if (lineOutBuffer.size() < bufSize) 
+				lineOutBuffer.resize(bufSize, 0.0f);
+			if (lineSumBuffer.size() < bufSize) 
+				lineSumBuffer.resize(bufSize, 0.0f);
+				
+			float* tBuf = tempBuffer.data();
+			float* eO = earlyOutBuffer.data();
+			float* lO = lineOutBuffer.data();
+			float* lS = lineSumBuffer.data();
 
-			Utils::Copy(tempBuffer, input, bufSize);
+			Utils::Copy(tBuf, input, bufSize);
 
 			if (lowCutEnabled)
-				highPass.Process(tempBuffer, tempBuffer, bufSize);
+				highPass.Process(tBuf, tBuf, bufSize);
 			if (highCutEnabled)
-				lowPass.Process(tempBuffer, tempBuffer, bufSize);
+				lowPass.Process(tBuf, tBuf, bufSize);
 
 			// completely zero if no input present
 			// Previously, the very small values were causing some really strange CPU spikes
 			for (int i = 0; i < bufSize; i++)
 			{
-				auto n = tempBuffer[i];
-				if (n * n < 0.000000001)
-					tempBuffer[i] = 0;
+				auto n = tBuf[i];
+				if (n * n < 0.000000001f)
+					tBuf[i] = 0;
 			}
 
-			preDelay.Process(tempBuffer, tempBuffer, bufSize);
+			preDelay.Process(tBuf, tBuf, bufSize);
 			if (multitapEnabled)
-				multitap.Process(tempBuffer, tempBuffer, bufSize);
+				multitap.Process(tBuf, tBuf, bufSize);
 			if (diffuserEnabled)
-				diffuser.Process(tempBuffer, tempBuffer, bufSize);
+				diffuser.Process(tBuf, tBuf, bufSize);
 			
-			Utils::Copy(earlyOutBuffer, tempBuffer, bufSize);
-			Utils::ZeroBuffer(lineSumBuffer, bufSize);
+			Utils::Copy(eO, tBuf, bufSize);
+			Utils::ZeroBuffer(lS, bufSize);
 			for (int i = 0; i < lineCount; i++)
 			{
-				lines[i].Process(tempBuffer, lineOutBuffer, bufSize);
-				Utils::Mix(lineSumBuffer, lineOutBuffer, 1.0f, bufSize);
+				lines[i].Process(tBuf, lO, bufSize);
+				Utils::Mix(lS, lO, 1.0f, bufSize);
 			}
 
 			auto perLineGain = GetPerLineGain();
-			Utils::Gain(lineSumBuffer, perLineGain, bufSize);
+			Utils::Gain(lS, perLineGain, bufSize);
 
 			for (int i = 0; i < bufSize; i++)
 			{
 				output[i] = dryOut * input[i]
-					+ earlyOut * earlyOutBuffer[i]
-					+ lineOut * lineSumBuffer[i];
+					+ earlyOut * eO[i]
+					+ lineOut * lS[i];
 			}
 		}
 
