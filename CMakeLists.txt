@@ -5,6 +5,7 @@ add_subdirectory(JUCE)
 
 juce_add_plugin(RISeed-Industrial
     COMPANY_NAME "Ghost Note"
+    BUNDLE_ID "com.GhostNote.RISeedIndustrial"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -57,6 +58,7 @@ target_link_libraries(RISeed-Industrial PRIVATE
 target_compile_definitions(RISeed-Industrial PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
 juce_generate_juce_header(RISeed-Industrial)
