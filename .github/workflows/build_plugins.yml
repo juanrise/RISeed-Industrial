@@ -1,0 +1,109 @@
+name: Build Plugins
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache JUCE and Build
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            JUCE
+            build
+          key: ${{ runner.os }}-juce-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Fetch JUCE
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: git clone --branch 8.0.0 --depth 1 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure CMake
+        run: cmake -B build -S .
+
+      - name: Build VST3
+        run: cmake --build build --config Release
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RISeed-Industrial-Windows
+          path: build/RISeed-Industrial_artefacts/
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache JUCE and Build
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            JUCE
+            build
+          key: ${{ runner.os }}-juce-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Fetch JUCE
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: git clone --branch 8.0.0 --depth 1 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure CMake
+        run: cmake -B build -S . -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+
+      - name: Build VST3 and AU
+        run: cmake --build build --config Release
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RISeed-Industrial-macOS
+          path: build/RISeed-Industrial_artefacts/
+
+  release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RISeed-Industrial-Windows
+          path: artefacts/windows
+
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RISeed-Industrial-macOS
+          path: artefacts/macos
+          
+      - name: Create Scripts and ZIP
+        run: |
+          echo "xattr -rd com.apple.quarantine *.vst3 *.component" > artefacts/macos/dequarantine.sh
+          chmod +x artefacts/macos/dequarantine.sh
+          echo 'Copy-Item *.vst3 "$env:COMMONPROGRAMFILES\VST3" -Recurse' > artefacts/windows/install_vst3.ps1
+          
+          cd artefacts/windows
+          zip -r ../../RISeed-Industrial_Windows.zip .
+          cd ../macos
+          zip -r ../../RISeed-Industrial_macOS.zip .
+          cd ../..
+          
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.0.0-beta
+          files: |
+            RISeed-Industrial_Windows.zip
+            RISeed-Industrial_macOS.zip

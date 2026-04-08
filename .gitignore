@@ -1,0 +1,12 @@
+build/
+JUCE/
+.vs/
+*.user
+*.suo
+.DS_Store
+*.dylib
+*.a
+*.lib
+*.so
+*.vst3
+*.component
